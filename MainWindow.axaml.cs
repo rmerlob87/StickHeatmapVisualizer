@@ -413,9 +413,9 @@ public partial class MainWindow : Window
         if (ctrl)
         {
             if (ctrl && e.Key == Key.Up)
-                _saturation = Math.Min(_saturation + 0.5f, 1000f);
+                _saturation = Math.Min(_saturation + 0.1f, 1000f);
             else if (ctrl && e.Key == Key.Down)
-                _saturation = Math.Max(_saturation - 0.5f, 0.00f);
+                _saturation = Math.Max(_saturation - 0.1f, 0.00f);
         }
         else
         {
