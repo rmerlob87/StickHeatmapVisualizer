@@ -14,7 +14,7 @@ OR
 
 # Heatmaps and help
 
-![image](https://github.com/user-attachments/assets/8a1c217f-e905-49b3-8c30-f5ee6043e953)
+![image](https://github.com/user-attachments/assets/58227606-50ac-4dd7-a0fc-9913d1c47faf)
 
 ![image](https://github.com/user-attachments/assets/376cd98a-61de-4f59-9b20-a591205010cd)
 
