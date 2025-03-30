@@ -10,3 +10,6 @@ Visualize stick movements from a Radiomaster Pocket FPV transmitter
 ![image](https://github.com/user-attachments/assets/8a1c217f-e905-49b3-8c30-f5ee6043e953)
 
 ![image](https://github.com/user-attachments/assets/376cd98a-61de-4f59-9b20-a591205010cd)
+
+# Future improvements
+- Add config section to configure different transmiters/axis mappings
