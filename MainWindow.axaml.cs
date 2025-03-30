@@ -15,7 +15,9 @@ namespace StickHeatmapVisualizer;
 
 public partial class MainWindow : Window
 {
-    private DispatcherTimer? _joystickTimer;
+    // Add these fields at the top of your MainWindow class
+    private DispatcherTimer? _renderTimer;
+    private System.Timers.Timer? _pollTimer;
     private readonly WriteableBitmap _leftBitmap;
     private readonly WriteableBitmap _rightBitmap;
 
@@ -31,7 +33,7 @@ public partial class MainWindow : Window
     private readonly int _height = 1000;
     private float kernelScale = 0.1f;
     private int kernelRadius = 15;
-    private float _saturation = 1.0f;
+    private float _saturation = 0.5f;
 
     private readonly int DeadzoneLeftXCenter = 500;
     private readonly int DeadzoneLeftXSize = 10;
@@ -42,7 +44,7 @@ public partial class MainWindow : Window
     private readonly int DeadzoneRightYCenter = 500;
     private readonly int DeadzoneRightYSize = 10;
 
-    private bool _useLogScale = false;
+    private bool _useLogScale = true;
 
     public MainWindow()
     {
@@ -68,12 +70,21 @@ public partial class MainWindow : Window
 
         JoystickManager.Initialize();
 
-        _joystickTimer = new DispatcherTimer
+
+
+        // Replace _joystickTimer initialization in your constructor with:
+        _pollTimer = new System.Timers.Timer(1000.0 / 250); // ~250Hz polling
+        _pollTimer.Elapsed += PollJoystick;
+        _pollTimer.AutoReset = true;
+        _pollTimer.Start();
+
+        _renderTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds((int)1000/250)
+            Interval = TimeSpan.FromMilliseconds(1000.0 / 60) // ~30 FPS rendering
         };
-        _joystickTimer.Tick += UpdateAndRenderHeatmaps;
-        _joystickTimer.Start();
+        _renderTimer.Tick += UpdateHeatmapDisplay;
+        _renderTimer.Start();
+
 
         ResetButton.Click += (_, _) => ResetHeatmaps();
         SaveButton.Click += (_, _) => SaveHeatmaps();
@@ -94,56 +105,57 @@ public partial class MainWindow : Window
 
     private void UpdateAndRenderHeatmaps(object? sender, EventArgs e)
     {
-        JoystickManager.Update();
-
-        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true);
-        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true);
-
-        string switchState = JoystickManager.GetZSwitchState();
-        StampIfRecordingAndNotIdle(rx, ry, lx, ly, switchState);
-
-        bool resetTrigger = JoystickManager.IsYRotationTriggered();
-        if (resetTrigger && !_prevYResetState)
-        {
-            ResetHeatmaps();
-            StatusLabel.Text = "🧼 Heatmaps Reset (Y Rotation)";
-        }
-        _prevYResetState = resetTrigger;
-
         float maxLeft = MaxValue(_leftHeatmapBuffer);
         float maxRight = MaxValue(_rightHeatmapBuffer);
 
-        DrawHeatmap(_leftBitmap, _leftHeatmapBuffer, lx, ly, 0xFFFFFFFF, maxLeft);
+        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true); // right stick
+        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true); // left stick
+
+        DrawHeatmap(_leftBitmap, _leftHeatmapBuffer, lx, ly, 0xFFFFFFFF, maxLeft); // ⚪ White = left
         LeftHeatmapSurface.InvalidateVisual();
 
-        DrawHeatmap(_rightBitmap, _rightHeatmapBuffer, rx, ry, 0xFF00FF00, maxRight);
+        DrawHeatmap(_rightBitmap, _rightHeatmapBuffer, rx, ry, 0xFF00FF00, maxRight); // 🟢 Green = right
         RightHeatmapSurface.InvalidateVisual();
     }
+
 
     private void StampIfRecordingAndNotIdle(int rx, int ry, int lx, int ly, string switchState)
     {
         if (switchState != _lastSwitchState)
         {
             _recording = switchState == "high";
-            StatusLabel.Text = _recording ? "Recording Active (Z Switch)" : "Recording Paused (Z Switch)";
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusLabel.Text = _recording ? "Recording Active (Z Switch)" : "Recording Paused (Z Switch)";
+            });
             _lastSwitchState = switchState;
         }
 
-        bool allSticksIdle = InDeadzone(lx, DeadzoneLeftXCenter, DeadzoneLeftXSize) &&
-                              InDeadzone(ly, DeadzoneLeftYCenter, DeadzoneLeftYSize) &&
-                              InDeadzone(rx, DeadzoneRightXCenter, DeadzoneRightXSize) &&
-                              InDeadzone(ry, DeadzoneRightYCenter, DeadzoneRightYSize);
+        bool allSticksIdle =
+            InDeadzone(lx, DeadzoneLeftXCenter, DeadzoneLeftXSize) &&
+            InDeadzone(ly, DeadzoneLeftYCenter, DeadzoneLeftYSize) &&
+            InDeadzone(rx, DeadzoneRightXCenter, DeadzoneRightXSize) &&
+            InDeadzone(ry, DeadzoneRightYCenter, DeadzoneRightYSize);
 
         if (allSticksIdle)
-            StatusLabel.Text = "Recording Active (Z Switch) - Not recording deadzone";
+        {
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusLabel.Text = "Recording Active (Z Switch) - Not recording deadzone";
+            });
+        }
 
         if (_recording && !allSticksIdle)
         {
             StampHeat(_leftHeatmapBuffer, lx, ly);
             StampHeat(_rightHeatmapBuffer, rx, ry);
-            StatusLabel.Text = "Recording Active (Z Switch)";
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                StatusLabel.Text = "Recording Active (Z Switch)";
+            });
         }
     }
+
 
     private unsafe void DrawHeatmap(WriteableBitmap bitmap, float[,] buffer, int dotX, int dotY, uint dotColor, float max)
     {
@@ -166,6 +178,43 @@ public partial class MainWindow : Window
         DrawDot(ptr, dotX, dotY, dotColor);
     }
 
+    // Replace UpdateAndRenderHeatmaps with two new methods:
+    private void PollJoystick(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        JoystickManager.Update();
+
+        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true);
+        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true);
+        string switchState = JoystickManager.GetZSwitchState();
+
+        StampIfRecordingAndNotIdle(rx, ry, lx, ly, switchState);
+
+        bool resetTrigger = JoystickManager.IsYRotationTriggered();
+        if (resetTrigger && !_prevYResetState)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ResetHeatmaps();
+                StatusLabel.Text = "🮼 Heatmaps Reset (Y Rotation)";
+            });
+        }
+        _prevYResetState = resetTrigger;
+    }
+
+    private void UpdateHeatmapDisplay(object? sender, EventArgs e)
+    {
+        float maxLeft = MaxValue(_leftHeatmapBuffer);
+        float maxRight = MaxValue(_rightHeatmapBuffer);
+
+        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true);
+        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true);
+
+        DrawHeatmap(_leftBitmap, _leftHeatmapBuffer, lx, ly, 0xFFFFFFFF, maxLeft);
+        LeftHeatmapSurface.InvalidateVisual();
+
+        DrawHeatmap(_rightBitmap, _rightHeatmapBuffer, rx, ry, 0xFF00FF00, maxRight);
+        RightHeatmapSurface.InvalidateVisual();
+    }
 
     private float MaxValue(float[,] buffer)
     {
