@@ -12,11 +12,12 @@
       <Button Name="HelpButton" Content="Help" Width="80" />
 
     </StackPanel>
-    
 
     <!-- Bottom Status -->
-    <TextBlock Name="StatusLabel" DockPanel.Dock="Bottom" HorizontalAlignment="Center" Margin="0,10,0,0"
+    <TextBlock Name="StatusLabel" DockPanel.Dock="Bottom" HorizontalAlignment="Center" Margin="0,0,0,0"
                FontFamily="Consolas" FontSize="14" />
+    <TextBlock Name="TuningLabel" DockPanel.Dock="Bottom" HorizontalAlignment="Center" Margin="0,0,0,0"
+           FontFamily="Consolas" FontSize="14" />
 
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="0,10,0,0">
       <Image Name="LeftHeatmapSurface" Width="500" Height="500" />

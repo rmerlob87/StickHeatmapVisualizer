@@ -34,6 +34,18 @@ public partial class MainWindow : Window
     private int kernelRadius = 15; // Default 5x5 kernel (radius 2)
     private float _saturation = 1.0f;  // Default: 100%
 
+    // Configurable deadzone centers (typically 500) and sizes (typically 10–20)
+    private int DeadzoneLeftXCenter = 500;
+    private int DeadzoneLeftXSize = 10;
+
+    private int DeadzoneLeftYCenter = 1000;
+    private int DeadzoneLeftYSize = 10;
+
+    private int DeadzoneRightXCenter = 500;
+    private int DeadzoneRightXSize = 10;
+
+    private int DeadzoneRightYCenter = 500;
+    private int DeadzoneRightYSize = 10;
 
     public MainWindow()
     {
@@ -72,8 +84,8 @@ public partial class MainWindow : Window
         HelpButton.Click += (_, _) => ShowHelpWindow();
 
         this.KeyDown += OnKeyDown;
-        StatusLabel.Text = "↑↓ Scale | ←→ Radius | Ctrl+↑↓ Saturation";
-
+        string status = $"↑↓ Scale: {kernelScale:F2} | ←→ Radius: {kernelRadius} | Ctrl+↑↓ Saturation: {_saturation:F2}";
+        TuningLabel.Text = status;
         this.Focus();
         // Done with updates — Dispose will unlock
     }
@@ -128,7 +140,7 @@ public partial class MainWindow : Window
         if (ctrl)
         {
             if (ctrl && e.Key == Key.Up)
-                _saturation = Math.Min(_saturation + 0.05f, 5f);
+                _saturation = Math.Min(_saturation + 0.02f, 5f);
             else if (ctrl && e.Key == Key.Down)
                 _saturation = Math.Max(_saturation - 0.05f, 0.05f);
         }
@@ -152,7 +164,7 @@ public partial class MainWindow : Window
         }
 
         string status = $"↑↓ Scale: {kernelScale:F2} | ←→ Radius: {kernelRadius} | Ctrl+↑↓ Saturation: {_saturation:F2}";
-        StatusLabel.Text = status;
+        TuningLabel.Text = status;
     }
 
     private void PollJoystick(object? sender, EventArgs e)
@@ -180,11 +192,27 @@ public partial class MainWindow : Window
             _lastSwitchState = switchState;
         }
 
-        if (_recording)
+        bool leftXIdle = InDeadzone(lx, DeadzoneLeftXCenter, DeadzoneLeftXSize);
+        bool leftYIdle = InDeadzone(ly, DeadzoneLeftYCenter, DeadzoneLeftYSize);
+        bool rightXIdle = InDeadzone(rx, DeadzoneRightXCenter, DeadzoneRightXSize);
+        bool rightYIdle = InDeadzone(ry, DeadzoneRightYCenter, DeadzoneRightYSize);
+
+        // You decide which combo stops recording:
+        bool allSticksIdle = leftXIdle && leftYIdle && rightXIdle && rightYIdle;
+
+        if (allSticksIdle)
+        {
+            StatusLabel.Text = ($"Recording Active (Z Switch) - Not recording deadzone");
+        }
+
+
+        if (_recording && !allSticksIdle)
         {
             StampHeat(_leftHeatmapBuffer, lx, ly);
             StampHeat(_rightHeatmapBuffer, rx, ry);
+            StatusLabel.Text = "Recording Active (Z Switch)";
         }
+
 
         bool resetTrigger = JoystickManager.IsYRotationTriggered();
 
@@ -233,6 +261,11 @@ public partial class MainWindow : Window
 
 
 
+    }
+    
+    private bool InDeadzone(int value, int center, int radius)
+    {
+        return Math.Abs(value - center) <= radius;
     }
 
     private void ResetHeatmaps()
