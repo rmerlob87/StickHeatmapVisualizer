@@ -30,25 +30,20 @@ public partial class MainWindow : Window
     private readonly int _width = 1000;
     private readonly int _height = 1000;
     private float kernelScale = 0.1f;
-    private int kernelRadius = 15; // Default 5x5 kernel (radius 2)
-    private float _saturation = 1.0f;  // Default: 100%
-    private bool _normalizeHeatmap = true;
+    private int kernelRadius = 15;
+    private float _saturation = 1.0f;
 
-    // Configurable deadzone centers (typically 500) and sizes (typically 10–20)
-    private int DeadzoneLeftXCenter = 500;
-    private int DeadzoneLeftXSize = 10;
+    private readonly int DeadzoneLeftXCenter = 500;
+    private readonly int DeadzoneLeftXSize = 10;
+    private readonly int DeadzoneLeftYCenter = 1000;
+    private readonly int DeadzoneLeftYSize = 10;
+    private readonly int DeadzoneRightXCenter = 500;
+    private readonly int DeadzoneRightXSize = 10;
+    private readonly int DeadzoneRightYCenter = 500;
+    private readonly int DeadzoneRightYSize = 10;
 
-    private int DeadzoneLeftYCenter = 1000;
-    private int DeadzoneLeftYSize = 10;
+    private bool _useLogScale = false;
 
-    private int DeadzoneRightXCenter = 500;
-    private int DeadzoneRightXSize = 10;
-
-    private int DeadzoneRightYCenter = 500;
-    private int DeadzoneRightYSize = 10;
-    private bool _useHistogramEqualization;
-
-    // CONSTRUCTOR
     public MainWindow()
     {
         InitializeComponent();
@@ -75,7 +70,7 @@ public partial class MainWindow : Window
 
         _joystickTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(4)  // ~250Hz if needed
+            Interval = TimeSpan.FromMilliseconds((int)1000/250)
         };
         _joystickTimer.Tick += UpdateAndRenderHeatmaps;
         _joystickTimer.Start();
@@ -86,49 +81,42 @@ public partial class MainWindow : Window
         HelpButton.Click += (_, _) => ShowHelpWindow();
         EqualizeButton.Click += (_, _) =>
         {
-            _useHistogramEqualization = !_useHistogramEqualization;
-            EqualizeButton.Content = _useHistogramEqualization ? "📊Equalize View" : "📈Raw View";
+            _useLogScale = !_useLogScale;
+            EqualizeButton.Content = _useLogScale ? "📉Log Scale" : "📈Raw View";
         };
 
         this.KeyDown += OnKeyDown;
         string status = $"↑↓ Scale: {kernelScale:F2} | ←→ Radius: {kernelRadius} | Ctrl+↑↓ Saturation: {_saturation:F2}";
-        EqualizeButton.Content = _useHistogramEqualization ? "📊Equalize View" : "📈Raw View";
+        EqualizeButton.Content = _useLogScale ? "📉Log Scale" : "📈Raw View";
         TuningLabel.Text = status;
         this.Focus();
-        // Done with updates — Dispose will unlock
     }
 
-
-    // MAIN FUNCTIONS
     private void UpdateAndRenderHeatmaps(object? sender, EventArgs e)
     {
         JoystickManager.Update();
 
-        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true); // right stick
-        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true); // left stick
+        var (rx, ry) = JoystickManager.GetStickAxes(0, 1, flipY: true);
+        var (lx, ly) = JoystickManager.GetStickAxes(3, 2, flipY: true);
 
         string switchState = JoystickManager.GetZSwitchState();
-
         StampIfRecordingAndNotIdle(rx, ry, lx, ly, switchState);
 
         bool resetTrigger = JoystickManager.IsYRotationTriggered();
-
         if (resetTrigger && !_prevYResetState)
         {
             ResetHeatmaps();
             StatusLabel.Text = "🧼 Heatmaps Reset (Y Rotation)";
         }
-
         _prevYResetState = resetTrigger;
 
+        float maxLeft = MaxValue(_leftHeatmapBuffer);
+        float maxRight = MaxValue(_rightHeatmapBuffer);
 
-        float[]? leftLut = _useHistogramEqualization ? ComputeEqualizationLUT(_leftHeatmapBuffer) : null;
-        float[]? rightLut = _useHistogramEqualization ? ComputeEqualizationLUT(_rightHeatmapBuffer) : null;
-
-        DrawHeatmap(_leftBitmap, _leftHeatmapBuffer, lx, ly, 0xFFFFFFFF, leftLut);
+        DrawHeatmap(_leftBitmap, _leftHeatmapBuffer, lx, ly, 0xFFFFFFFF, maxLeft);
         LeftHeatmapSurface.InvalidateVisual();
 
-        DrawHeatmap(_rightBitmap, _rightHeatmapBuffer, rx, ry, 0xFF00FF00, rightLut);
+        DrawHeatmap(_rightBitmap, _rightHeatmapBuffer, rx, ry, 0xFF00FF00, maxRight);
         RightHeatmapSurface.InvalidateVisual();
     }
 
@@ -136,32 +124,18 @@ public partial class MainWindow : Window
     {
         if (switchState != _lastSwitchState)
         {
-            if (switchState == "low")
-            {
-                _recording = false;
-                StatusLabel.Text = "Recording Paused (Z Switch)";
-            }
-            else if (switchState == "high")
-            {
-                _recording = true;
-                StatusLabel.Text = "Recording Active (Z Switch)";
-            }
-
+            _recording = switchState == "high";
+            StatusLabel.Text = _recording ? "Recording Active (Z Switch)" : "Recording Paused (Z Switch)";
             _lastSwitchState = switchState;
         }
 
-        bool leftXIdle = InDeadzone(lx, DeadzoneLeftXCenter, DeadzoneLeftXSize);
-        bool leftYIdle = InDeadzone(ly, DeadzoneLeftYCenter, DeadzoneLeftYSize);
-        bool rightXIdle = InDeadzone(rx, DeadzoneRightXCenter, DeadzoneRightXSize);
-        bool rightYIdle = InDeadzone(ry, DeadzoneRightYCenter, DeadzoneRightYSize);
-
-        // You decide which combo stops recording:
-        bool allSticksIdle = leftXIdle && leftYIdle && rightXIdle && rightYIdle;
+        bool allSticksIdle = InDeadzone(lx, DeadzoneLeftXCenter, DeadzoneLeftXSize) &&
+                              InDeadzone(ly, DeadzoneLeftYCenter, DeadzoneLeftYSize) &&
+                              InDeadzone(rx, DeadzoneRightXCenter, DeadzoneRightXSize) &&
+                              InDeadzone(ry, DeadzoneRightYCenter, DeadzoneRightYSize);
 
         if (allSticksIdle)
-        {
-            StatusLabel.Text = ($"Recording Active (Z Switch) - Not recording deadzone");
-        }
+            StatusLabel.Text = "Recording Active (Z Switch) - Not recording deadzone";
 
         if (_recording && !allSticksIdle)
         {
@@ -171,7 +145,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private unsafe void DrawHeatmap(WriteableBitmap bitmap, float[,] buffer, int dotX, int dotY, uint dotColor, float[]? lut = null)
+    private unsafe void DrawHeatmap(WriteableBitmap bitmap, float[,] buffer, int dotX, int dotY, uint dotColor, float max)
     {
         using var fb = bitmap.Lock();
         var ptr = (uint*)fb.Address;
@@ -181,14 +155,35 @@ public partial class MainWindow : Window
             for (int x = 0; x < _width; x++)
             {
                 float raw = buffer[x, y];
-                float displayVal = lut != null
-                    ? lut[Math.Clamp((int)(raw * 255), 0, 255)]
-                    : raw * _saturation;
-                ptr[y * _width + x] = ColorFromValue(displayVal);
+                float displayVal = _useLogScale
+                    ? LogScale(raw)
+                    : (max > 0 ? raw / max : 0f);  // Normalized raw
+
+                ptr[y * _width + x] = ColorFromValue(displayVal * _saturation);
             }
         }
 
         DrawDot(ptr, dotX, dotY, dotColor);
+    }
+
+
+    private float MaxValue(float[,] buffer)
+    {
+        float max = 0f;
+        for (int y = 0; y < _height; y++)
+            for (int x = 0; x < _width; x++)
+                if (buffer[x, y] > max)
+                    max = buffer[x, y];
+        return max;
+    }
+
+    private float LogScale(float value)
+    {
+        // Avoid log(0), and tweak base to control contrast
+        float scaled = value * _saturation;
+        float logVal = MathF.Log10(1 + scaled); // log(1 + x) keeps 0 at 0
+        float logMax = MathF.Log10(1 + 1 * _saturation); // normalize to [0,1]
+        return logVal / logMax;
     }
 
     private void ResetHeatmaps()
@@ -337,7 +332,7 @@ public partial class MainWindow : Window
                 _rightHeatmapBuffer[x, y] = reader.ReadSingle();
     }
 
-    private bool InDeadzone(int value, int center, int radius)
+    private static bool InDeadzone(int value, int center, int radius)
     {
         return Math.Abs(value - center) <= radius;
     }
@@ -360,42 +355,6 @@ public partial class MainWindow : Window
             }
         }
     }
-    private float[] ComputeEqualizationLUT(float[,] buffer)
-    {
-        const int bins = 256;
-        int[] histogram = new int[bins];
-        float[] cdf = new float[bins];
-        int totalCount = 0;
-
-        for (int y = 0; y < _height; y++)
-        {
-            for (int x = 0; x < _width; x++)
-            {
-                float val = buffer[x, y];
-                int bin = Math.Clamp((int)(val * (bins - 1)), 0, bins - 1);
-                histogram[bin]++;
-            }
-        }
-
-        // Compute total only from non-zero bins
-        for (int i = 0; i < bins; i++)
-            totalCount += histogram[i];
-
-        // Bail out if empty
-        if (totalCount == 0)
-            return Enumerable.Range(0, bins).Select(i => 0f).ToArray();
-
-        // Compute CDF
-        cdf[0] = histogram[0];
-        for (int i = 1; i < bins; i++)
-            cdf[i] = cdf[i - 1] + histogram[i];
-
-        // Normalize
-        for (int i = 0; i < bins; i++)
-            cdf[i] /= totalCount;
-
-        return cdf;
-    }
 
     // KEYBOARD CALLBACKS
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -407,7 +366,7 @@ public partial class MainWindow : Window
             if (ctrl && e.Key == Key.Up)
                 _saturation = Math.Min(_saturation + 0.5f, 1000f);
             else if (ctrl && e.Key == Key.Down)
-                _saturation = Math.Max(_saturation - 0.5f, 0.05f);
+                _saturation = Math.Max(_saturation - 0.5f, 0.00f);
         }
         else
         {
