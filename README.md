@@ -4,7 +4,7 @@ Visualize stick movements from a Radiomaster Pocket FPV transmitter
 # Instructions
 - Download latest release from Releases section
 - Run .exe file (windows-x64)
-- Connect a Radiomaster Pocket or similar ExpressLRS radio, bindings might need to be changed in code at the moment for other radios.
+- Connect a Radiomaster Pocket or similar ExpressLRS radio.
   
 OR
 
