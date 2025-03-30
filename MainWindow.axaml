@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="StickHeatmapVisualizer.MainWindow"
-        Width="1000" Height="600"
+        Width="1100" Height="600"
         Title="Stick Heatmap Visualizer">
 
   <DockPanel Margin="10">
@@ -10,7 +10,7 @@
       <Button Name="SaveButton" Content="Save" Width="80" />
       <Button Name="LoadButton" Content="Load" Width="80" />
       <Button Name="HelpButton" Content="Help" Width="80" />
-
+      <Button Name="EqualizeButton" Content="Equalize" Width="160" />
     </StackPanel>
 
     <!-- Bottom Status -->
@@ -19,7 +19,7 @@
     <TextBlock Name="TuningLabel" DockPanel.Dock="Bottom" HorizontalAlignment="Center" Margin="0,0,0,0"
            FontFamily="Consolas" FontSize="14" />
 
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="0,10,0,0">
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20" Margin="10,10,10,10">
       <Image Name="LeftHeatmapSurface" Width="500" Height="500" />
       <Image Name="RightHeatmapSurface" Width="500" Height="500" />
     </StackPanel>
